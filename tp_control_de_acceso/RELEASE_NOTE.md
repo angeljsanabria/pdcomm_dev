@@ -194,6 +194,41 @@ Capa de servicio de dispositivo sobre el protocolo **PN532** usando el **I2C1** 
 
 ---
 
+## APP control de acceso
+
+Capa **APP** del firmware: lógica de producto para **lectura NFC**, **comunicación con el autorizador** por UART y **actualización de la decisión** en la MEF de acceso. Se apoya en **API** (`API_pn532`, `API_uart_data`, `API_accesos_output`, `API_delay`) y en **Drivers** (`I2C1` / `UART`).
+
+### APP — MEF de acceso (`APP/inc/APP_acceso_fsm.h`, `APP/src/APP_acceso_fsm.c`)
+
+Orquesta el **ciclo principal**: inicialización y configuración del **PN532**, esperas temporizadas, sondeo y validación de tarjeta, envío del UID al autorizador, espera de respuesta y ejecución de **acceso A / B / denegado** o secuencia de **error**. Mantiene el contexto en **`acceso_t`** (estado actual, `delay_t`, bandera de autorización pendiente, resultado a ejecutar, UID en `value_card`, reintentos y último estado PN532).
+
+| Parámetro | Valor / nota |
+|-----------|----------------|
+| API expuesta (resumen) | `acceso_FSM_init`, `acceso_FSM_update`, `acceso_push_authorization` |
+| Temporización | `delay_t` no bloqueante; constantes `ACCESO_DELAY_*` y `ACCESO_MAX_RETRIES` (ver `.h`) |
+| Entrada del autorizador | `acceso_push_authorization(accesoExec_t)` cuando la MEF está en espera de decisión |
+| Tipo de uso | MEF **reentrante por tick**: `acceso_FSM_update()` debe llamarse periódicamente desde el *main* o tarea equivalente |
+
+**NOTA:** Descripción de transiciones y estados en detalle en la sección **«Máquina de estados principal»** más abajo; contratos de funciones en el **`.h`**.
+
+---
+
+### APP — Parser de comandos UART (`APP/inc/APP_cmd_data_parser.h`, `APP/src/APP_cmd_data_parser.c`)
+
+Capa de **adaptación del enlace serie** hacia la MEF: acumula caracteres recibidos por **`uartReceiveStringSize`** (1 byte por avance cuando aplica), arma una **línea de comando** terminada con **`CMD_TERMINADOR`** (`ENDSTR` / salto de línea según `API_uart_data.h`) y reconoce cadenas del autorizador (**`ACCESO-A`**, **`ACCESO-B`**, **`ACCESO0`** no autorizado). Convierte a mayúsculas para la comparación y, si el comando es válido, invoca **`acceso_push_authorization`** con el `accesoExec_t` correspondiente.
+
+| Parámetro | Valor / nota |
+|-----------|----------------|
+| Línea máxima | `CMD_MAX_LINE` (**64** bytes, incluye `'\0'`) |
+| Comandos reconocidos | `ACCESO-A`, `ACCESO-B`, `ACCESO0` (subcadena vía `strstr`) |
+| API expuesta (resumen) | `cmdDataParserInit`, `cmdDataPoll` |
+| Retornos internos | `cmd_status_t` (`CMD_OK`, overflow, sintaxis, desconocido, argumento) |
+| Tipo de uso | **Parser incremental no bloqueante**: `cmdDataPoll()` periódico; usa UART en modo **polled** (`uartReceiveStringSize` con *timeout* corto) |
+
+**NOTA:** Comportamiento detallado de la mini-MEF interna (`CMD_IDLE` … `CMD_EXEC`) en el **`.c`**; prototipos y comentarios en el **`.h`**.
+
+---
+
 ## Máquina de estados principal (`APP/inc/APP_acceso_fsm.h`, `APP/src/APP_acceso_fsm.c`)
 
 La **MEF** de acceso es la aplicación cíclica: lectura NFC por **PN532** (I2C), envío del identificador al **autorizador** por **UART**, espera de la decisión remota y acción sobre **salidas** (LEDs / accesos). Usa un **`delay_t`** no bloqueante para temporizar pasos; en el estado de error se usa **`HAL_Delay`** dentro de un bucle (bloqueante durante la secuencia).
