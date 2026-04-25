@@ -11,13 +11,15 @@
 #include <stdbool.h>
 #include <stddef.h>
 
+#include "API_pn532_port.h"
+
 typedef bool bool_t;
 
 
 /* 7 bits segun NXP (modulos tipo Adafruit/Seed). Si tu PCB usa otro valor, medilo. */
-#define PN532_I2C_ADDRESS_7BIT		0x24
+#define PN532_ADDRESS_7BIT		0x24
 /* HAL: direccion de hoja de datos desplazada 1 bit a la izquierda */
-#define PN532_I2C_ADDR_SHIFT		(0x24 << 1)
+#define PN532_I2C_ADDR_SHIFT		(PN532_ADDRESS_7BIT << 1)
 #define PN532_CONFIG_MODE_IN_LIST_PASSIVE_TARGET 		0x4A	// Config InListPassiveTarget
 #define PN532_CONFIG_MODE_IN_AUTO_POLL				 	0x60
 #define PN532_CONFIG_DEFAULT_TIMEOUT				 	500 // en ms
@@ -77,13 +79,15 @@ typedef enum
 } PN532_CONFIG_MODE_T;
 
 
+
 /**
   * @brief 	Inicializa el unico PN532_Handler_t interno (valores por defecto).
   * @param 	modo - Modo de lectura (InListPassiveTarget o InAutoPoll).
   *         El desarrollo esta solo para el modo InListPassiveTarget.
-  * @retval PN532_OK o PN532_ERR_OTRO si el modo no es valido.
+  * @param  dispositivo - I2C o SPI segun conexion del PN532.
+  * @retval PN532_OK o PN532_ERR_OTRO si el modo no es valido o el dispositivo no esta soportado aun.
   */
-PN532_Status_t PN532_init_module(PN532_CONFIG_MODE_T modo);
+PN532_Status_t PN532_init_module(PN532_CONFIG_MODE_T modo, PN532_Device_t dispositivo);
 
 /**
   * @brief 	SAM Normal: camino feliz Ready -> ACK 6B -> Ready -> respuesta D5 15 00. read_mode InListPassiveTarget.

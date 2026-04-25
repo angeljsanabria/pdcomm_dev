@@ -2,7 +2,7 @@
 
 ## Resumen
 
-El proyecto es un sistema de control de acceso con tarjetas NFC con autorizador externo. El firmware en la NUCLEO se encarga de configurar y controlar un módulo lector de tarjetas NFC (PN532) por interfaz I2C. Cada 500ms se envía un comando de lectura al módulo y lee su respuesta. Si hay tarjeta válida en la respuesta, los datos leídos se envían por UART hacia un módulo de interfaz inalámbrica; un sistema embebido externo (Autorizador) recibe este mensaje y válida la tarjeta frente a una tabla de tarjetas autorizadas y el tipo de acceso (acceso A, acceso B o no autorizado). El microcontrolador recibe la respuesta del Autorizador y acciona salidas digitales asociadas al acceso concedido. Luego apaga los indicadores de acceso y vuelve a enviar el comando de lectura de tarjetas para repetir el ciclo de control.
+El proyecto es un sistema de control de acceso con tarjetas NFC con autorizador externo. El firmware en la NUCLEO se encarga de configurar y controlar un módulo lector de tarjetas NFC (PN532); el enlace efectivo hacia el chip es I2C en este firmware, a través de la capa *port* (`API_pn532_port`, que utiliza el driver I2C1 del proyecto). Cada 500ms se envía un comando de lectura al módulo y lee su respuesta. Si hay tarjeta válida en la respuesta, los datos leídos se envían por UART hacia un módulo de interfaz inalámbrica; un sistema embebido externo (Autorizador) recibe este mensaje y válida la tarjeta frente a una tabla de tarjetas autorizadas y el tipo de acceso (acceso A, acceso B o no autorizado). El microcontrolador recibe la respuesta del Autorizador y acciona salidas digitales asociadas al acceso concedido. Luego apaga los indicadores de acceso y vuelve a enviar el comando de lectura de tarjetas para repetir el ciclo de control.
 
 ---
 
@@ -57,9 +57,9 @@ El proyecto es un sistema de control de acceso con tarjetas NFC con autorizador 
 
 ---
 
-### API UART de datos (`API_uart_data.h` / `.c`) _TODO Actualizar
+### API UART de datos (`API_uart_data.h` / `.c`)
 
-- `bool_t uartInit(void)` Configura **USART3** (baudios, 8N1, FIFO deshabilitado tras ajustes) e inicializa el periferico. Devuelve **false** si falla `HAL_UART_Init` o la configuracion extendida.
+- `bool_t API_uart_data_init(void)` Configura **USART3** (baudios, 8N1, FIFO deshabilitado tras ajustes) e inicializa el periferico. Devuelve **false** si falla `HAL_UART_Init` o la configuracion extendida.
 - `void uartSendString(uint8_t *pstring)` Envia una cadena **terminada en `\0`**. No envia si puntero nulo, longitud 0 o `strlen >= UART_DATA_MAX_SIZE`.
 - `void uartSendStringSize(uint8_t *pstring, uint16_t size)` Envia **exactamente** `size` bytes (eco local, datos binarios cortos, etc.).
 - `bool_t uartReceiveStringSize(uint8_t *pstring, uint16_t size)` Recibe **size** bytes con timeout; **true** si llegaron todos a tiempo, **false** si timeout o error HAL.
@@ -93,8 +93,8 @@ Handler global: **`UART_HandleTypeDef huart3`** (definido en `API_uart_data.c`).
 | Filtro analogico I2C | **habilitado** (`I2C_ANALOGFILTER_ENABLE`) |
 | Filtro digital I2C | **0** (desactivado en la cuenta del HAL) |
 | Dual address / General call | deshabilitados |
-| **Esclavo de referencia (NFC)** | **PN532**; direccion 7 bits **0x24**; hacia el HAL: **`PN532_I2C_ADDR_SHIFT`** (`0x24 << 1`, ver `API_pn532.h`) |
-| Timeouts I2C (alta capa) | p. ej. **500 ms** default PN532 (`PN532_CONFIG_DEFAULT_TIMEOUT`) — parametro `timeout` en `I2C1_Write` / `I2C1_Read` |
+| **Esclavo de referencia (NFC)** | **PN532**; direccion 7 bits **0x24** (`PN532_ADDRESS_7BIT` en `API_pn532.h`); hacia el HAL: **`PN532_I2C_ADDR_SHIFT`** (`(PN532_ADDRESS_7BIT << 1)`) |
+| Timeouts I2C (alta capa) | p. ej. **500 ms** default PN532 (`PN532_CONFIG_DEFAULT_TIMEOUT`) — se aplican en `pn532_port_read` / `pn532_port_write` y, en I2C, al parametro `timeout` de `I2C1_Write` / `I2C1_Read` |
 
 ---
 
@@ -107,7 +107,7 @@ Handler global: **`UART_HandleTypeDef huart3`** (definido en `API_uart_data.c`).
 
 Handler interno: **`I2C_HandleTypeDef hi2c1`** (`static` en `API_i2c_1.c`). GPIO, RCC y `HAL_I2C_MspInit` / `HAL_I2C_MspDeInit`: **`bsp_i2c1.c`** / **`bsp_i2c1.h`**.
 
-Consumidor principal en este TP: **`API_pn532.c`** (comandos y lecturas hacia el **PN532**).
+Consumidores: **`API/src/API_pn532.c`** (protocolo y lecturas hacia el **PN532**); las transferencias de bajo nivel hacia I2C/SPI se concentran en **`API/src/API_pn532_port.c`**, que para I2C invoca `I2C1_Write` / `I2C1_Read` (comandos/lecturas hacia el **PN532** bajo I2C).
 
 ---
 
@@ -131,7 +131,7 @@ Inicializacion y drivers: **`bsp_leds.c`** / **`bsp_leds.h`**. Patrones por esta
 |------|-------------------|-----|
 | **BSP** | `BSP/Inc`, `BSP/Src` | Placa: pines, `HAL_*_MspInit`, LEDs, boton, mapeo **USART3** / **I2C1**. Depende de **HAL** y **CMSIS**. |
 | **Drivers** | `Drivers/inc`, `Drivers/src` | Acceso de bajo nivel al bus: **I2C1** (`API_i2c_1`), **UART** de datos (`API_uart_data`). Usa **BSP** + HAL. |
-| **API** | `API/inc`, `API/src` | Servicios de periférico y protocolo: **PN532** (`API_pn532`), salidas de acceso, **delay**, **debounce**, etc. Usa **Drivers** + **BSP** + HAL. |
+| **API** | `API/inc`, `API/src` | Servicios de periférico y protocolo: **PN532** (`API_pn532` + *port* `API_pn532_port`), salidas de acceso, **delay**, **debounce**, etc. El *port* usa **Drivers** (I2C) + **BSP** + HAL. |
 | **APP** | `APP/inc`, `APP/src` | Aplicación del TP: **MEF** de acceso (`APP_acceso_fsm`), **parser** de comandos UART del autorizador (`APP_cmd_data_parser`). Usa **API** y **Drivers** según el caso. |
 
 **Dependencia (de arriba hacia abajo):** `APP` → `API` → `Drivers` → `BSP` → **HAL**. `Core` (*main*, interrupciones) orquesta el ciclo y llama a **APP** / **API** / **Drivers** / **BSP**.
@@ -178,17 +178,17 @@ Este módulo encapsula el uso de la **USART3** como interfaz serie mediante la H
 
 ---
 
-### API PN532 (`API/inc/API_pn532.h`, `API/src/API_pn532.c`)
+### API PN532 (`API/inc/API_pn532.h`, `API/src/API_pn532.c`) y *port* (`API/inc/API_pn532_port.h`, `API/src/API_pn532_port.c`)
 
-Capa de servicio de dispositivo sobre el protocolo **PN532** usando el **I2C1** del proyecto (`I2C1_Write` / `I2C1_Read`). Mantiene un manejador interno (`PN532_Handler_t`) con dirección I2C, *timeout* de operación, presencia de tarjeta y UID leído.
+Capa de servicio de dispositivo sobre el protocolo **PN532**. **`API_pn532.c`** no llama al `I2C1_*` directamente: usa **`pn532_port_read`** / **`pn532_port_write`** (definidos en **`API_pn532_port.c`**) y, con `PN532_DEV_I2C`, se llega a **`I2C1_Write` / `I2C1_Read`**. Mantiene un manejador interno (`PN532_Handler_t`: `addr_module`, tipo de enlace `PN532_Device_t` en `dispositivo`, *timeout* de operación, presencia de tarjeta y UID). El tipo de bus se elige con la **APP** al llamar a `PN532_init_module(modo, dispositivo)`; en la práctica del firmware, **I2C**; **SPI** aún no soportado (error en init o en *port*).
 
 | Parámetro | Valor |
 |-----------|--------|
-| Bus / dirección | I2C, esclavo 7 bits `0x24` (módulos típicos); dirección en formato HAL desplazada (`PN532_I2C_ADDR_SHIFT`) |
+| Bus / dirección | 7 bits `0x24` según módulo (`PN532_ADDRESS_7BIT`); hacia el HAL, `addr_module` con `PN532_I2C_ADDR_SHIFT` |
 | Modo de uso previsto | InListPassiveTarget (lectura bajo demanda); InAutoPoll definido a nivel de API pero el desarrollo apunta al modo pasivo |
-| Tipo de uso | Acoplado al driver I2C bloqueante (*polled*); errores como `PN532_Status_t` (OK, sin tarjeta, I2C, *timeout*, protocolo, etc.) |
+| Tipo de uso | *Polled* (I2C bloqueante a través del *port*); errores como `PN532_Status_t` (OK, sin tarjeta, *timeout*, protocolo, enlace, etc.) |
 
-**API expuesta:** `PN532_init_module`, `PN532_config_module`, `PN532_polling_send`, `PN532_read_inlist_response`, `PN532_read_ack`, `PN532_save_read_uid_hex`
+**API expuesta (driver):** `PN532_init_module`, `PN532_config_module`, `PN532_polling_send`, `PN532_read_inlist_response`, `PN532_read_ack`, `PN532_save_read_uid_hex` — **port:** `pn532_port_read`, `pn532_port_write` (más `PN532_Device_t` y `PN532_PortStatus_t` en `API_pn532_port.h`, incluido vía `API_pn532.h`).
 
 **NOTA:** Detalle de cada función en el `.h` del repositorio.
 
@@ -196,11 +196,11 @@ Capa de servicio de dispositivo sobre el protocolo **PN532** usando el **I2C1** 
 
 ## APP control de acceso
 
-Capa **APP** del firmware: lógica de producto para **lectura NFC**, **comunicación con el autorizador** por UART y **actualización de la decisión** en la MEF de acceso. Se apoya en **API** (`API_pn532`, `API_uart_data`, `API_accesos_output`, `API_delay`) y en **Drivers** (`I2C1` / `UART`).
+Capa **APP** del firmware: lógica de producto para **lectura NFC**, **comunicación con el autorizador** por UART y **actualización de la decisión** en la MEF de acceso. Se apoya en **API** (`API_pn532`, `API_pn532_port`, `API_uart_data`, `API_accesos_output`, `API_delay`) y en **Drivers** (I2C1 / `UART` de datos) cuando el *port* del PN532 aplica.
 
 ### APP — MEF de acceso (`APP/inc/APP_acceso_fsm.h`, `APP/src/APP_acceso_fsm.c`)
 
-Orquesta el **ciclo principal**: inicialización y configuración del **PN532**, esperas temporizadas, sondeo y validación de tarjeta, envío del UID al autorizador, espera de respuesta y ejecución de **acceso A / B / denegado** o secuencia de **error**. Mantiene el contexto en **`acceso_t`** (estado actual, `delay_t`, bandera de autorización pendiente, resultado a ejecutar, UID en `value_card`, reintentos y último estado PN532).
+Orquesta el **ciclo principal**: inicialización y configuración del **PN532**, esperas temporizadas, sondeo y validación de tarjeta, envío del UID al autorizador, espera de respuesta y ejecución de **acceso A / B / denegado** o secuencia de **error**. Mantiene el contexto en **`acceso_t`** (estado actual, `delay_t`, bandera de autorización pendiente, resultado a ejecutar, UID en `value_card`, reintentos, último estado PN532, y **`nfc_perif`**: `PN532_Device_t` para el enlace, p. ej. `PN532_DEV_I2C` al *init*).
 
 | Parámetro | Valor / nota |
 |-----------|----------------|
@@ -231,7 +231,7 @@ Capa de **adaptación del enlace serie** hacia la MEF: acumula caracteres recibi
 
 ## Máquina de estados principal (`APP/inc/APP_acceso_fsm.h`, `APP/src/APP_acceso_fsm.c`)
 
-La **MEF** de acceso es la aplicación cíclica: lectura NFC por **PN532** (I2C), envío del identificador al **autorizador** por **UART**, espera de la decisión remota y acción sobre **salidas** (LEDs / accesos). Usa un **`delay_t`** no bloqueante para temporizar pasos; en el estado de error se usa **`HAL_Delay`** dentro de un bucle (bloqueante durante la secuencia).
+La **MEF** de acceso es la aplicación cíclica: lectura NFC por **PN532** (I2C, vía *port* hacia I2C1), envío del identificador al **autorizador** por **UART**, espera de la decisión remota y acción sobre **salidas** (LEDs / accesos). Usa un **`delay_t`** no bloqueante para temporizar pasos; en el estado de error se usa **`HAL_Delay`** dentro de un bucle (bloqueante durante la secuencia).
 
 | Parámetro (macro) | Valor | Uso en la MEF |
 |-------------------|-------|----------------|
@@ -246,7 +246,7 @@ La **MEF** de acceso es la aplicación cíclica: lectura NFC por **PN532** (I2C)
 
 | Estado | Descripción resumida |
 |--------|------------------------|
-| **`ACCESO_FSM_INIT`** | Arranque: limpieza de contexto, `PN532_init_module` (modo *InListPassiveTarget*). Tras **500 ms** y apagado de salidas, pasa a **Config**. Fallo NFC → **Error LED**. |
+| **`ACCESO_FSM_INIT`** | Arranque: limpieza de contexto, `PN532_init_module` (*InListPassiveTarget*, `PN532_Device_t` según `acceso.nfc_perif`, p. ej. `PN532_DEV_I2C`). Tras **500 ms** y apagado de salidas, pasa a **Config**. Fallo NFC → **Error LED**. |
 | **`ACCESO_FSM_CONFIG_PN532`** | `PN532_config_module`; tras temporización, `PN532_read_ack`. ACK OK → **Idle** con *delay* 500 ms; fallo → **Error LED**. |
 | **`ACCESO_FSM_IDLE`** | Espera **500 ms** (*dead time* entre lecturas) y pasa a **Poll to read card**. |
 | **`ACCESO_FSM_POLL_TO_READ_CARD`** | `PN532_polling_send`. Si falla → vuelve a **Idle**; si OK → **Poll read ACK** con *delay* 500 ms. |
@@ -272,11 +272,13 @@ Vista de carpetas de aplicación (sin `Drivers/CMSIS` ni `Drivers/STM32L4xx_HAL_
 │   │   ├── API_accesos_output.h
 │   │   ├── API_debounce.h
 │   │   ├── API_delay.h
-│   │   └── API_pn532.h
+│   │   ├── API_pn532.h
+│   │   └── API_pn532_port.h
 │   └── src
 │       ├── API_accesos_output.c
 │       ├── API_delay.c
-│       └── API_pn532.c
+│       ├── API_pn532.c
+│       └── API_pn532_port.c
 ├── APP
 │   ├── inc
 │   │   ├── APP_acceso_fsm.h

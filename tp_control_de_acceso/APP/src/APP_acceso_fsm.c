@@ -34,6 +34,7 @@ void acceso_FSM_init(void)
 {
 	(void)memset(&acceso, 0, sizeof(acceso));
 	acceso.st_actual = ACCESO_FSM_INIT;
+	acceso.nfc_perif = PN532_DEV_I2C;
 	delayInit(&acceso.delay_fsm, ACCESO_DELAY_DEFAULT);
 }
 
@@ -48,7 +49,7 @@ void acceso_FSM_update(void)
 			acceso.valid_card = 0;
 			acceso.len_card = 0;
 			(void)memset(acceso.value_card, 0, sizeof(acceso.value_card));
-			acceso.lastStNFC = PN532_init_module(pn532_mode_InListPassiveTarget);
+			acceso.lastStNFC = PN532_init_module(pn532_mode_InListPassiveTarget, acceso.nfc_perif);
 			if (acceso.lastStNFC != PN532_OK) {
 				acceso.st_actual = ACCESO_FSM_EXEC_ERROR_LED_SEQ;
 				break;

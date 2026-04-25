@@ -57,6 +57,7 @@ typedef enum {
   * @param 	value_card - Buffer de la tarjeta leida transformada a char
   * @param 	retry_count - Timeout maximo de operaciones con el PN532 (ms).
   * @param 	lastStNFC - Retorno de la API del modulo PN532 NFC
+  * @param 	nfc_perif - Tipo de bus hacia el PN532 (ver PN532_Device_t)
   */
 typedef struct {
 	accesoState_t st_actual;
@@ -68,6 +69,7 @@ typedef struct {
 	uint8_t value_card[ACCESO_MAX_VALUE_CARD];
 	uint8_t retry_count;
 	PN532_Status_t lastStNFC;
+	PN532_Device_t nfc_perif;
 } acceso_t;
 
 
